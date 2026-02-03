@@ -26,9 +26,6 @@ services:
       - nfe-certificados:/var/www/storage/certificados
     networks:
       - livefy-network
-    depends_on:
-      mysql:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/api/health"]
       interval: 30s
@@ -41,7 +38,5 @@ networks:
     driver: bridge
 
 volumes:
-  mysql-data:
-    driver: local
   nfe-certificados:
     driver: local
