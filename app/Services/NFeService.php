@@ -68,16 +68,16 @@ class NFeService
             Log::info('Série da NFe obtida dos dados fiscais: ' . $notaConfig['serie']);
         }
 
-        // Se número não foi fornecido, buscar último número + 1
+        // Se número não foi fornecido, usar o próximo número dos dados fiscais
         if (!isset($notaConfig['numero'])) {
-            $ultimaNota = \App\Models\NotaFiscal::where('user_id', $sale->user_id)
-                ->where('tipo', 'NFe')
-                ->where('serie', $notaConfig['serie'])
-                ->orderBy('numero', 'desc')
-                ->first();
+            // Usar proximo_numero_nfe e incrementar
+            $notaConfig['numero'] = $fiscalData->proximo_numero_nfe ?? 1;
+            Log::info('Número da NFe gerado: ' . $notaConfig['numero']);
             
-            $notaConfig['numero'] = $ultimaNota ? ($ultimaNota->numero + 1) : 1;
-            Log::info('Número da NFe gerado automaticamente: ' . $notaConfig['numero']);
+            // Incrementar o próximo número nos dados fiscais para garantir unicidade
+            $fiscalData->proximo_numero_nfe = $notaConfig['numero'] + 1;
+            $fiscalData->save();
+            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_nfe);
         }
 
         // Validar certificado
