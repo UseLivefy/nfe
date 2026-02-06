@@ -26,7 +26,6 @@ class NFeController extends Controller
                 'sale_id' => 'required|integer|exists:sales,id',
                 'nota_config' => 'required|array',
                 'nota_config.numero' => 'nullable|integer',
-                'nota_config.serie' => 'required|integer',
                 'nota_config.natureza' => 'required|string',
                 'nota_config.cfop' => 'required|string',
                 'nota_config.observacoes' => 'nullable|string',
