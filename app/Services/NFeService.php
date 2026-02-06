@@ -21,6 +21,30 @@ class NFeService
     {
         Log::info('Iniciando emissão de NFe para sale_id: ' . $saleId);
 
+        // Verificar se já existe nota fiscal AUTORIZADA para esta venda
+        $notaAutorizada = NotaFiscal::where('sale_id', $saleId)
+            ->where('status', 'autorizada')
+            ->first();
+            
+        if ($notaAutorizada) {
+            throw new \Exception(
+                'Já existe uma nota fiscal autorizada para esta venda. ' .
+                "NFe #{$notaAutorizada->numero} - Série {$notaAutorizada->serie}"
+            );
+        }
+        
+        // Verificar se existe nota com erro (para log)
+        $notaComErro = NotaFiscal::where('sale_id', $saleId)
+            ->where('status', 'erro')
+            ->first();
+            
+        if ($notaComErro) {
+            Log::info('Nota anterior rejeitada encontrada', [
+                'numero' => $notaComErro->numero,
+                'mensagem' => $notaComErro->mensagem_sefaz
+            ]);
+        }
+
         // Buscar venda com todos os relacionamentos
         $sale = Sale::with([
             'customer',
@@ -30,13 +54,19 @@ class NFeService
 
         // Verificar se venda está paga
         if (!$sale->isPaid()) {
-            throw new \Exception('Apenas vendas pagas podem ter NFe emitida');
+            throw new \Exception('Apenas vendas pagas podem ter NFe emitida. Status da venda: ' . $sale->status);
         }
 
         // Buscar dados fiscais do lojista
         $fiscalData = FiscalData::where('user_id', $sale->user_id)
             ->where('ativo', true)
             ->firstOrFail();
+
+        // Se série não foi fornecida, usar a configurada nos dados fiscais
+        if (!isset($notaConfig['serie'])) {
+            $notaConfig['serie'] = $fiscalData->serie_nfe ?? '1';
+            Log::info('Série da NFe obtida dos dados fiscais: ' . $notaConfig['serie']);
+        }
 
         // Se número não foi fornecido, buscar último número + 1
         if (!isset($notaConfig['numero'])) {
@@ -72,14 +102,33 @@ class NFeService
         $xml = $make->getXML();
         Log::debug('XML da NFe gerado');
         
+        // Garantir que diretório existe
+        $logDir = storage_path('logs');
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0755, true);
+        }
+        
         // Salvar XML para debug
         $xmlPath = storage_path('logs/nfe_xml_debug.xml');
         file_put_contents($xmlPath, $xml);
         Log::info('XML salvo em: ' . $xmlPath);
+        
+        // Log do conteúdo do XML (primeiros 1000 caracteres)
+        Log::info('Início do XML gerado: ' . substr($xml, 0, 1000));
 
         // Assinar XML
-        $xmlAssinado = $tools->signNFe($xml);
-        Log::debug('XML assinado com sucesso');
+        try {
+            $xmlAssinado = $tools->signNFe($xml);
+            Log::debug('XML assinado com sucesso');
+            
+            // Salvar XML assinado
+            $xmlAssinadoPath = storage_path('logs/nfe_xml_assinado.xml');
+            file_put_contents($xmlAssinadoPath, $xmlAssinado);
+            Log::info('XML assinado salvo em: ' . $xmlAssinadoPath);
+        } catch (\Exception $e) {
+            Log::error('Erro ao assinar XML: ' . $e->getMessage());
+            throw $e;
+        }
 
         // Enviar para SEFAZ
         // indSinc: 0=Assíncrono, 1=Síncrono (obrigatório para lote com 1 NFe)
@@ -93,7 +142,37 @@ class NFeService
             Log::debug('Resposta SEFAZ EnviaLote: ' . $response);
         } catch (\Exception $e) {
             Log::error('Erro ao enviar lote para SEFAZ: ' . $e->getMessage());
-            throw new \Exception('Erro de comunicação via soap, ' . $e->getMessage());
+            
+            // Salvar registro com erro de comunicação
+            NotaFiscal::create([
+                'user_id' => $sale->user_id,
+                'sale_id' => $sale->id,
+                'fiscal_data_id' => $fiscalData->id,
+                'tipo' => 'NFe',
+                'numero' => $notaConfig['numero'],
+                'serie' => $notaConfig['serie'],
+                'chave_acesso' => '',
+                'protocolo' => '',
+                'status' => 'erro',
+                'data_emissao' => now(),
+                'ambiente' => $fiscalData->ambiente_nfe,
+                'provedor_nome' => 'sefaz',
+                'valor_total' => $sale->final_amount,
+                'valor_produtos' => $sale->total_amount,
+                'valor_frete' => $sale->shipping_amount,
+                'valor_desconto' => $sale->discount_amount,
+                'cliente_nome' => $sale->customer->name,
+                'cliente_documento' => $sale->customer->document ?? '',
+                'cliente_email' => $sale->customer->email ?? '',
+                'cliente_telefone' => $sale->customer->phone ?? '',
+                'natureza' => $notaConfig['natureza'],
+                'cfop' => $notaConfig['cfop'],
+                'itens_json' => json_encode($sale->saleItems),
+                'xml_assinado' => $xmlAssinado ?? '',
+                'mensagem_sefaz' => 'Erro de comunicação: ' . $e->getMessage(),
+            ]);
+            
+            throw new \Exception('Erro de comunicação com SEFAZ: ' . $e->getMessage());
         }
 
         // Processar resposta
@@ -159,7 +238,35 @@ class NFeService
                     'protocolo' => $notaFiscal->protocolo,
                 ];
             } else {
-                // NFe rejeitada
+                // NFe rejeitada - Salvar no banco com status de erro
+                $notaFiscal = NotaFiscal::create([
+                    'user_id' => $sale->user_id,
+                    'sale_id' => $sale->id,
+                    'fiscal_data_id' => $fiscalData->id,
+                    'tipo' => 'NFe',
+                    'numero' => $notaConfig['numero'],
+                    'serie' => $notaConfig['serie'],
+                    'chave_acesso' => $protocolo->infProt->chNFe ?? '',
+                    'protocolo' => '',
+                    'status' => 'erro',
+                    'data_emissao' => now(),
+                    'ambiente' => $fiscalData->ambiente_nfe,
+                    'provedor_nome' => 'sefaz',
+                    'valor_total' => $sale->final_amount,
+                    'valor_produtos' => $sale->total_amount,
+                    'valor_frete' => $sale->shipping_amount,
+                    'valor_desconto' => $sale->discount_amount,
+                    'cliente_nome' => $sale->customer->name,
+                    'cliente_documento' => $sale->customer->document ?? '',
+                    'cliente_email' => $sale->customer->email ?? '',
+                    'cliente_telefone' => $sale->customer->phone ?? '',
+                    'natureza' => $notaConfig['natureza'],
+                    'cfop' => $notaConfig['cfop'],
+                    'itens_json' => json_encode($sale->saleItems),
+                    'xml_assinado' => $xmlAssinado,
+                    'mensagem_sefaz' => $protocolo->infProt->xMotivo,
+                ]);
+                
                 throw new \Exception("NFe rejeitada: {$protocolo->infProt->cStat} - {$protocolo->infProt->xMotivo}");
             }
         }
@@ -190,6 +297,35 @@ class NFeService
         $protocolo = $stdConsulta->protNFe;
 
         if ($protocolo->infProt->cStat != 100) {
+            // NFe rejeitada no processo assíncrono - Salvar no banco com status de erro
+            $notaFiscal = NotaFiscal::create([
+                'user_id' => $sale->user_id,
+                'sale_id' => $sale->id,
+                'fiscal_data_id' => $fiscalData->id,
+                'tipo' => 'NFe',
+                'numero' => $notaConfig['numero'],
+                'serie' => $notaConfig['serie'],
+                'chave_acesso' => $protocolo->infProt->chNFe ?? '',
+                'protocolo' => '',
+                'status' => 'erro',
+                'data_emissao' => now(),
+                'ambiente' => $fiscalData->ambiente_nfe,
+                'provedor_nome' => 'sefaz',
+                'valor_total' => $sale->final_amount,
+                'valor_produtos' => $sale->total_amount,
+                'valor_frete' => $sale->shipping_amount,
+                'valor_desconto' => $sale->discount_amount,
+                'cliente_nome' => $sale->customer->name,
+                'cliente_documento' => $sale->customer->document ?? '',
+                'cliente_email' => $sale->customer->email ?? '',
+                'cliente_telefone' => $sale->customer->phone ?? '',
+                'natureza' => $notaConfig['natureza'],
+                'cfop' => $notaConfig['cfop'],
+                'itens_json' => json_encode($sale->saleItems),
+                'xml_assinado' => $xmlAssinado,
+                'mensagem_sefaz' => $protocolo->infProt->xMotivo,
+            ]);
+            
             throw new \Exception("NFe rejeitada: {$protocolo->infProt->cStat} - {$protocolo->infProt->xMotivo}");
         }
 
@@ -278,30 +414,39 @@ class NFeService
      */
     protected function buildNFe(Make $make, Sale $sale, FiscalData $fiscalData, array $notaConfig): void
     {
+        Log::info('Iniciando buildNFe');
+        
         // Dados básicos da NFe
         $std = new \stdClass();
         $std->versao = config('nfe.versao');
         $std->Id = null;
         $std->pk_nItem = null;
         $make->taginfNFe($std);
+        Log::debug('taginfNFe criada');
 
         // IDE - Identificação
         $this->buildTagIde($make, $sale, $fiscalData, $notaConfig);
+        Log::debug('buildTagIde concluído');
 
         // Emitente
         $this->buildTagEmit($make, $fiscalData);
+        Log::debug('buildTagEmit concluído');
 
         // Destinatário
         $this->buildTagDest($make, $sale);
+        Log::debug('buildTagDest concluído');
 
         // Itens
         $this->buildItens($make, $sale);
+        Log::debug('buildItens concluído');
 
         // Totais
         $this->buildTotais($make, $sale);
+        Log::debug('buildTotais concluído');
 
         // Transporte
         $this->buildTransporte($make);
+        Log::debug('buildTransporte concluído');
 
         // Pagamento (obrigatório!)
         Log::info('Iniciando buildPagamento');
@@ -319,6 +464,8 @@ class NFeService
         //     $std->infCpl = $notaConfig['observacoes'];
         //     $make->taginfAdic($std);
         // }
+        
+        Log::info('buildNFe concluído com sucesso');
     }
 
     protected function buildTagIde(Make $make, Sale $sale, FiscalData $fiscalData, array $notaConfig): void
