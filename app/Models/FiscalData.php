@@ -32,12 +32,12 @@ class FiscalData extends Model
         'certificado_nome',
         'certificado_senha',
         'certificado_validade_ate',
-        'ambiente_nfe',
-        'serie_nfe',
-        'proximo_numero_nfe',
-        'ambiente_nfse',
-        'proximo_numero_nfse',
-        'provedor_nfe',
+        'ambiente_n_fe',
+        'serie_n_fe',
+        'proximo_numero_n_fe',
+        'ambiente_nf_se',
+        'proximo_numero_nf_se',
+        'provedor_n_fe',
         'provedor_api_key',
         'provedor_webhook_token',
         'ativo',
@@ -46,8 +46,8 @@ class FiscalData extends Model
     protected $casts = [
         'certificado_validade_ate' => 'datetime',
         'ativo' => 'boolean',
-        'proximo_numero_nfe' => 'integer',
-        'proximo_numero_nfse' => 'integer',
+        'proximo_numero_n_fe' => 'integer',
+        'proximo_numero_nf_se' => 'integer',
     ];
 
     protected $hidden = [

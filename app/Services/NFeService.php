@@ -64,20 +64,20 @@ class NFeService
 
         // Se série não foi fornecida, usar a configurada nos dados fiscais
         if (!isset($notaConfig['serie'])) {
-            $notaConfig['serie'] = $fiscalData->serie_nfe ?? '1';
+            $notaConfig['serie'] = $fiscalData->serie_n_fe ?? '1';
             Log::info('Série da NFe obtida dos dados fiscais: ' . $notaConfig['serie']);
         }
 
         // Se número não foi fornecido, usar o próximo número dos dados fiscais
         if (!isset($notaConfig['numero'])) {
-            // Usar proximo_numero_nfe e incrementar
-            $notaConfig['numero'] = $fiscalData->proximo_numero_nfe ?? 1;
+            // Usar proximo_numero_n_fe e incrementar
+            $notaConfig['numero'] = $fiscalData->proximo_numero_n_fe ?? 1;
             Log::info('Número da NFe gerado: ' . $notaConfig['numero']);
             
             // Incrementar o próximo número nos dados fiscais para garantir unicidade
-            $fiscalData->proximo_numero_nfe = $notaConfig['numero'] + 1;
+            $fiscalData->proximo_numero_n__fe = $notaConfig['numero'] + 1;
             $fiscalData->save();
-            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_nfe);
+            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_n_fe);
         }
 
         // Validar certificado
@@ -155,7 +155,7 @@ class NFeService
                 'protocolo' => '',
                 'status' => 'erro',
                 'data_emissao' => now(),
-                'ambiente' => $fiscalData->ambiente_nfe,
+                'ambiente' => $fiscalData->ambiente_n_fe,
                 'provedor_nome' => 'sefaz',
                 'valor_total' => $sale->final_amount,
                 'valor_produtos' => $sale->total_amount,
@@ -213,7 +213,7 @@ class NFeService
                     'protocolo' => $protocolo->infProt->nProt,
                     'status' => 'autorizada',
                     'data_emissao' => now(),
-                    'ambiente' => $fiscalData->ambiente_nfe,
+                    'ambiente' => $fiscalData->ambiente_n_fe,
                     'provedor_nome' => 'sefaz',
                     'valor_total' => $sale->final_amount,
                     'valor_produtos' => $sale->total_amount,
@@ -250,7 +250,7 @@ class NFeService
                     'protocolo' => '',
                     'status' => 'erro',
                     'data_emissao' => now(),
-                    'ambiente' => $fiscalData->ambiente_nfe,
+                    'ambiente' => $fiscalData->ambiente_n_fe,
                     'provedor_nome' => 'sefaz',
                     'valor_total' => $sale->final_amount,
                     'valor_produtos' => $sale->total_amount,
@@ -309,7 +309,7 @@ class NFeService
                 'protocolo' => '',
                 'status' => 'erro',
                 'data_emissao' => now(),
-                'ambiente' => $fiscalData->ambiente_nfe,
+                'ambiente' => $fiscalData->ambiente_n_fe,
                 'provedor_nome' => 'sefaz',
                 'valor_total' => $sale->final_amount,
                 'valor_produtos' => $sale->total_amount,
@@ -344,7 +344,7 @@ class NFeService
             'protocolo' => $protocolo->infProt->nProt,
             'status' => 'autorizada',
             'data_emissao' => now(),
-            'ambiente' => $fiscalData->ambiente_nfe,
+            'ambiente' => $fiscalData->ambiente_n_fe,
             'provedor_nome' => 'sefaz',
             'valor_total' => $sale->final_amount,
             'valor_produtos' => $sale->total_amount,
@@ -384,7 +384,7 @@ class NFeService
     {
         $config = [
             'atualizacao' => date('Y-m-d H:i:s'),
-            'tpAmb' => (int) ($fiscalData->ambiente ?? 2),
+            'tpAmb' => (int) ($fiscalData->ambiente_n_fe ?? 2),
             'razaosocial' => $fiscalData->razao_social,
             'siglaUF' => $fiscalData->uf,
             'cnpj' => $fiscalData->cnpj,
@@ -489,7 +489,7 @@ class NFeService
         $std->tpImp = 1;
         $std->tpEmis = 1;
         $std->cDV = 0;
-        $std->tpAmb = (int) ($fiscalData->ambiente ?? 2);
+        $std->tpAmb = (int) ($fiscalData->ambiente_n_fe ?? 2);
         $std->finNFe = 1;
         
         // indFinal: 0=Normal, 1=Consumidor final
@@ -540,7 +540,7 @@ class NFeService
         
         // Em homologação, forçar dados específicos conforme Manual da NFe
         $fiscalData = FiscalData::where('user_id', $sale->user_id)->first();
-        $isHomologacao = ($fiscalData->ambiente ?? 2) == 2;
+        $isHomologacao = ($fiscalData->ambiente_n_fe ?? 2) == 2;
         
         if ($isHomologacao) {
             // Destinatário padrão para homologação
