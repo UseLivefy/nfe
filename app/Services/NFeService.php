@@ -70,14 +70,14 @@ class NFeService
 
         // Se número não foi fornecido, usar o próximo número dos dados fiscais
         if (!isset($notaConfig['numero'])) {
-            // Usar proximo_numero_n_fe e incrementar
-            $notaConfig['numero'] = $fiscalData->proximo_numero_n_fe ?? 1;
+            // Usar proximo_numero_nfe e incrementar
+            $notaConfig['numero'] = $fiscalData->proximo_numero_nfe ?? 1;
             Log::info('Número da NFe gerado: ' . $notaConfig['numero']);
             
             // Incrementar o próximo número nos dados fiscais para garantir unicidade
-            $fiscalData->proximo_numero_n__fe = $notaConfig['numero'] + 1;
+            $fiscalData->proximo_numero_nfe = $notaConfig['numero'] + 1;
             $fiscalData->save();
-            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_n_fe);
+            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_nfe);
         }
 
         // Validar certificado
