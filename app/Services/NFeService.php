@@ -384,7 +384,7 @@ class NFeService
     {
         $config = [
             'atualizacao' => date('Y-m-d H:i:s'),
-            'tpAmb' => (int) config('nfe.ambiente', 2),
+            'tpAmb' => (int) ($fiscalData->ambiente ?? 2),
             'razaosocial' => $fiscalData->razao_social,
             'siglaUF' => $fiscalData->uf,
             'cnpj' => $fiscalData->cnpj,
@@ -489,7 +489,7 @@ class NFeService
         $std->tpImp = 1;
         $std->tpEmis = 1;
         $std->cDV = 0;
-        $std->tpAmb = (int) ($fiscalData->ambiente_nfe ?? 2);
+        $std->tpAmb = (int) ($fiscalData->ambiente ?? 2);
         $std->finNFe = 1;
         
         // indFinal: 0=Normal, 1=Consumidor final
@@ -540,7 +540,7 @@ class NFeService
         
         // Em homologação, forçar dados específicos conforme Manual da NFe
         $fiscalData = FiscalData::where('user_id', $sale->user_id)->first();
-        $isHomologacao = ($fiscalData->ambiente_nfe ?? 2) == 2;
+        $isHomologacao = ($fiscalData->ambiente ?? 2) == 2;
         
         if ($isHomologacao) {
             // Destinatário padrão para homologação
