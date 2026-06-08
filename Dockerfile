@@ -56,7 +56,7 @@ COPY . .
 RUN composer install --no-scripts --prefer-dist --ignore-platform-reqs
 
 # Gerar autoload otimizado
-RUN composer dump-autoload --optimize
+RUN composer dump-autoload --optimize --ignore-platform-reqs
 
 # Configurar permissões
 RUN chown -R www-data:www-data /var/www \
