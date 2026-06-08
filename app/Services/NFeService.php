@@ -544,18 +544,18 @@ class NFeService
         
         if ($isHomologacao) {
             // Destinatário padrão para homologação
-            $std->CPF = '05626815236';
             $std->xNome = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
         } else {
             $documento = $sale->customer->document ?? '';
-            if (strlen($documento) == 11) {
-                $std->CPF = $documento;
-            } else {
-                $std->CNPJ = $documento;
-                // TODO: Se cliente tiver IE informada, adicionar aqui
-                // $std->IE = $sale->customer->inscricao_estadual ?? null;
-            }
             $std->xNome = $sale->customer->name;
+        }
+
+        if (strlen($documento) == 11) {
+            $std->CPF = $documento;
+        } else {
+            $std->CNPJ = $documento;
+            // TODO: Se cliente tiver IE informada, adicionar aqui
+            // $std->IE = $sale->customer->inscricao_estadual ?? null;
         }
         
         // indIEDest: 1=Contribuinte, 2=Isento, 9=Não contribuinte
