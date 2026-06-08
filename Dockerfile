@@ -53,8 +53,7 @@ WORKDIR /var/www
 COPY . .
 
 # Instalar dependências (incluindo os pacotes NFe que já estão no composer.json)
-# --no-audit ignora avisos de segurança que podem bloquear a instalação
-RUN composer install --no-scripts --prefer-dist --ignore-platform-reqs --no-audit
+RUN composer install --no-scripts --prefer-dist --ignore-platform-reqs
 
 # Gerar autoload otimizado
 RUN composer dump-autoload --optimize
