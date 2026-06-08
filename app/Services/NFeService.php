@@ -541,12 +541,12 @@ class NFeService
         // Em homologação, forçar dados específicos conforme Manual da NFe
         $fiscalData = FiscalData::where('user_id', $sale->user_id)->first();
         $isHomologacao = ($fiscalData->ambiente_n_fe ?? 2) == 2;
-        
+        $documento = $sale->customer->document ?? '';
+
         if ($isHomologacao) {
             // Destinatário padrão para homologação
             $std->xNome = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL';
         } else {
-            $documento = $sale->customer->document ?? '';
             $std->xNome = $sale->customer->name;
         }
 
