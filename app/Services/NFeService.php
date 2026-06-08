@@ -10,6 +10,7 @@ use NFePHP\NFe\Tools;
 use NFePHP\Common\Certificate;
 use NFePHP\NFe\Common\Standardize;
 use NFePHP\NFe\Complements;
+use NFePHP\DA\NFe\Danfe;
 use Illuminate\Support\Facades\Log;
 
 class NFeService
@@ -230,6 +231,15 @@ class NFeService
                     'mensagem_sefaz' => $protocolo->infProt->xMotivo,
                 ]);
 
+                // Gerar e salvar PDF
+                try {
+                    $this->gerarPDF($tools, $xmlProtocolado, $protocolo->infProt->chNFe);
+                    Log::info('PDF gerado com sucesso para chave: ' . $protocolo->infProt->chNFe);
+                } catch (\Exception $e) {
+                    Log::error('Erro ao gerar PDF: ' . $e->getMessage());
+                    // Não lançar exceção, PDF pode ser gerado depois
+                }
+
                 return [
                     'success' => true,
                     'message' => 'NFe emitida com sucesso',
@@ -360,6 +370,15 @@ class NFeService
             'xml_assinado' => $xmlProtocolado,
             'mensagem_sefaz' => $protocolo->infProt->xMotivo,
         ]);
+
+        // Gerar e salvar PDF
+        try {
+            $this->gerarPDF($tools, $xmlProtocolado, $protocolo->infProt->chNFe);
+            Log::info('PDF gerado com sucesso para chave: ' . $protocolo->infProt->chNFe);
+        } catch (\Exception $e) {
+            Log::error('Erro ao gerar PDF: ' . $e->getMessage());
+            // Não lançar exceção, PDF pode ser gerado depois
+        }
 
         Log::info('NFe emitida com sucesso', [
             'chave' => $protocolo->infProt->chNFe,
@@ -758,5 +777,27 @@ class NFeService
         
         $chave = $cidade . '-' . $uf;
         return $municipios[$chave] ?? '3550308'; // Default: São Paulo
+    }
+    
+    /**
+     * Gerar PDF da NFe
+     */
+    protected function gerarPDF(Tools $tools, string $xmlProtocolado, string $chaveAcesso): void
+    {
+        // Criar diretório se não existir
+        $pdfDir = storage_path('app/nfe/pdf');
+        if (!is_dir($pdfDir)) {
+            mkdir($pdfDir, 0755, true);
+        }
+        
+        // Gerar PDF usando a biblioteca nfephp-da
+        $danfe = new Danfe($xmlProtocolado);
+        $pdf = $danfe->render();
+        
+        // Salvar PDF
+        $pdfPath = $pdfDir . '/' . $chaveAcesso . '.pdf';
+        file_put_contents($pdfPath, $pdf);
+        
+        Log::info('PDF salvo em: ' . $pdfPath);
     }
 }

@@ -22,6 +22,7 @@ Route::get('/health', [HealthController::class, 'check']);
     Route::post('/nfe/consultar', [NFeController::class, 'consultar']);
     Route::post('/nfe/cancelar', [NFeController::class, 'cancelar']);
     Route::post('/nfe/corrigir', [NFeController::class, 'cartaCorrecao']);
+    Route::get('/nfe/{chaveAcesso}/pdf', [NFeController::class, 'getPdf']);
     
     // Certificado Digital
     Route::post('/certificado/upload', [CertificadoController::class, 'upload']);

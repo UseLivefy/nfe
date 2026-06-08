@@ -275,8 +275,37 @@ class NFeController extends Controller
         }
     }
 
-    /**
-     * Consultar cadastro CPF/CNPJ na SEFAZ
+    /**     * Buscar PDF da NFe pela chave de acesso
+     */
+    public function getPdf($chaveAcesso)
+    {
+        try {
+            $pdfPath = storage_path("app/nfe/pdf/{$chaveAcesso}.pdf");
+            
+            if (!file_exists($pdfPath)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PDF não encontrado. A nota pode estar em processamento.'
+                ], 404);
+            }
+            
+            return response()->file($pdfPath, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="nfe-' . $chaveAcesso . '.pdf"'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar PDF: ' . $e->getMessage());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar PDF',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**     * Consultar cadastro CPF/CNPJ na SEFAZ
      */
     public function consultarCadastro(Request $request)
     {
