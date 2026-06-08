@@ -282,11 +282,42 @@ class NFeController extends Controller
         try {
             $pdfPath = storage_path("app/nfe/pdf/{$chaveAcesso}.pdf");
             
+            // Se PDF não existe, tentar gerar a partir do XML no banco
             if (!file_exists($pdfPath)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'PDF não encontrado. A nota pode estar em processamento.'
-                ], 404);
+                Log::info('PDF não encontrado, tentando gerar a partir do XML', ['chave' => $chaveAcesso]);
+                
+                // Buscar nota fiscal no banco pela chave
+                $notaFiscal = \App\Models\NotaFiscal::where('chave_acesso', $chaveAcesso)->first();
+                
+                if (!$notaFiscal || empty($notaFiscal->xml_assinado)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'PDF não encontrado e XML não disponível para geração.'
+                    ], 404);
+                }
+                
+                // Tentar gerar PDF a partir do XML
+                try {
+                    $danfe = new \NFePHP\DA\NFe\Danfe($notaFiscal->xml_assinado);
+                    $pdf = $danfe->render();
+                    
+                    // Criar diretório se não existir
+                    $pdfDir = storage_path('app/nfe/pdf');
+                    if (!is_dir($pdfDir)) {
+                        mkdir($pdfDir, 0755, true);
+                    }
+                    
+                    // Salvar PDF
+                    file_put_contents($pdfPath, $pdf);
+                    Log::info('PDF gerado retroativamente', ['chave' => $chaveAcesso]);
+                    
+                } catch (\Exception $e) {
+                    Log::error('Erro ao gerar PDF retroativo: ' . $e->getMessage());
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Erro ao gerar PDF: ' . $e->getMessage()
+                    ], 500);
+                }
             }
             
             return response()->file($pdfPath, [
