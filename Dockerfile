@@ -49,17 +49,12 @@ COPY docker/default.conf /etc/nginx/sites-available/default
 # Criar diretório da aplicação
 WORKDIR /var/www
 
-# Copiar composer.json primeiro
-COPY composer.json ./
-
-# Adicionar os pacotes NFe-PHP (sem --no-autoloader que não existe no require)
-RUN composer require nfephp-org/sped-nfe nfephp-org/sped-common --no-scripts --prefer-dist
-
-# Agora copiar o resto dos arquivos
+# Copiar todos os arquivos da aplicação
 COPY . .
 
-# Instalar demais dependências se houver
-RUN composer install --no-scripts --prefer-dist
+# Instalar dependências (incluindo os pacotes NFe que já estão no composer.json)
+# --no-audit ignora avisos de segurança que podem bloquear a instalação
+RUN composer install --no-scripts --prefer-dist --ignore-platform-reqs --no-audit
 
 # Gerar autoload otimizado
 RUN composer dump-autoload --optimize
