@@ -628,16 +628,33 @@ class NFeService
         $ufDest = $this->getUFDestinatario($sale);
         $cfopBase = ($fiscalData->uf == $ufDest) ? '5102' : '6102'; // 5xxx=Interna, 6xxx=Interestadual
         $isSimples = ($fiscalData->regime_tributario ?? 1) == 1;
-        
+
+        // Distribuição proporcional do frete por item (ICMSTot/vFrete deve = soma de det/prod/vFrete)
+        $shippingAmount = (float) ($sale->shipping_amount ?? 0);
+        $totalProd = $sale->saleItems->sum(fn($i) => $i->quantity * $i->unit_price);
+        $lastIndex = $sale->saleItems->count() - 1;
+        $freightAccumulated = 0.0;
+
         foreach ($sale->saleItems as $index => $item) {
             $nItem = $index + 1;
-            
+
+            // Frete proporcional: último item absorve o restante para evitar diferença de centavos
+            if ($index === $lastIndex) {
+                $itemFreight = round($shippingAmount - $freightAccumulated, 2);
+            } else {
+                $itemFreight = $totalProd > 0
+                    ? round($shippingAmount * ($item->quantity * $item->unit_price) / $totalProd, 2)
+                    : 0.0;
+                $freightAccumulated += $itemFreight;
+            }
+
             // Produto
             $std = new \stdClass();
             $std->item = $nItem;
             $std->cProd = $item->product->sku;
             $std->cEAN = 'SEM GTIN';
             $std->xProd = $item->product->name;
+            $std->vFrete = number_format($itemFreight, 2, '.', '');
             $std->NCM = '71131900'; // Artigos de joalharia de metais preciosos
             $std->CFOP = $cfopBase;
             $std->uCom = 'UN';
