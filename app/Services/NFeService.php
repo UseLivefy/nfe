@@ -54,9 +54,9 @@ class NFeService
         ])->findOrFail($saleId);
 
         // Verificar se venda está paga
-        if (!$sale->isPaid()) {
-            throw new \Exception('Apenas vendas pagas podem ter NFe emitida. Status da venda: ' . $sale->status);
-        }
+        // if (!$sale->isPaid()) {
+            // throw new \Exception('Apenas vendas pagas podem ter NFe emitida. Status da venda: ' . $sale->status);
+        // }
 
         // Buscar dados fiscais do lojista
         $fiscalData = FiscalData::where('user_id', $sale->user_id)
