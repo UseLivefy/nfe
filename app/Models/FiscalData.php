@@ -34,7 +34,7 @@ class FiscalData extends Model
         'certificado_validade_ate',
         'ambiente_n_fe',
         'serie_n_fe',
-        'proximo_numero_nfe',
+        'proximo_numero_n_fe',
         'ambiente_nf_se',
         'proximo_numero_nf_se',
         'provedor_n_fe',
@@ -46,7 +46,7 @@ class FiscalData extends Model
     protected $casts = [
         'certificado_validade_ate' => 'datetime',
         'ativo' => 'boolean',
-        'proximo_numero_nfe' => 'integer',
+        'proximo_numero_n_fe' => 'integer',
         'proximo_numero_nf_se' => 'integer',
     ];
 

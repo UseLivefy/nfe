@@ -11,6 +11,7 @@ use NFePHP\Common\Certificate;
 use NFePHP\NFe\Common\Standardize;
 use NFePHP\NFe\Complements;
 use NFePHP\DA\NFe\Danfe;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class NFeService
@@ -40,10 +41,11 @@ class NFeService
             ->first();
             
         if ($notaComErro) {
-            Log::info('Nota anterior rejeitada encontrada', [
+            Log::info('Nota anterior com erro encontrada, removendo para reemissão', [
                 'numero' => $notaComErro->numero,
                 'mensagem' => $notaComErro->mensagem_sefaz
             ]);
+            $notaComErro->delete();
         }
 
         // Buscar venda com todos os relacionamentos
@@ -72,13 +74,13 @@ class NFeService
         // Se número não foi fornecido, usar o próximo número dos dados fiscais
         if (!isset($notaConfig['numero'])) {
             // Usar proximo_numero_nfe e incrementar
-            $notaConfig['numero'] = $fiscalData->proximo_numero_nfe ?? 1;
+            $notaConfig['numero'] = $fiscalData->proximo_numero_n_fe ?? 1;
             Log::info('Número da NFe gerado: ' . $notaConfig['numero']);
             
             // Incrementar o próximo número nos dados fiscais para garantir unicidade
-            $fiscalData->proximo_numero_nfe = $notaConfig['numero'] + 1;
+            $fiscalData->proximo_numero_n_fe = $notaConfig['numero'] + 1;
             $fiscalData->save();
-            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_nfe);
+            Log::info('Próximo número atualizado para: ' . $fiscalData->proximo_numero_n_fe);
         }
 
         // Validar certificado
@@ -235,7 +237,7 @@ class NFeService
                 try {
                     $this->gerarPDF($tools, $xmlProtocolado, $protocolo->infProt->chNFe);
                     Log::info('PDF gerado com sucesso para chave: ' . $protocolo->infProt->chNFe);
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error('Erro ao gerar PDF: ' . $e->getMessage());
                     // Não lançar exceção, PDF pode ser gerado depois
                 }
@@ -375,7 +377,7 @@ class NFeService
         try {
             $this->gerarPDF($tools, $xmlProtocolado, $protocolo->infProt->chNFe);
             Log::info('PDF gerado com sucesso para chave: ' . $protocolo->infProt->chNFe);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Erro ao gerar PDF: ' . $e->getMessage());
             // Não lançar exceção, PDF pode ser gerado depois
         }
@@ -596,15 +598,18 @@ class NFeService
             : $sale->customer->addresses->first();
             
         if ($addr) {
+            $cepLimpo = preg_replace('/[^0-9]/', '', $addr->zip_code ?? '');
+            $ibgeCode = $this->getIBGECodeByCep($cepLimpo);
+
             $std = new \stdClass();
             $std->xLgr = $addr->street ?? 'Rua Exemplo';
             $std->nro = $addr->number ?? 'SN';
             $std->xCpl = $addr->complement ?? '';
             $std->xBairro = $addr->neighborhood ?? 'Centro';
-            $std->cMun = $this->getCodigoMunicipio($addr->city ?? 'São Paulo', $addr->state ?? 'SP');
+            $std->cMun = $ibgeCode ?: $this->getCodigoMunicipio($addr->city ?? 'São Paulo', $addr->state ?? 'SP');
             $std->xMun = $addr->city ?? 'São Paulo';
             $std->UF = $addr->state ?? 'SP';
-            $std->CEP = preg_replace('/[^0-9]/', '', $addr->zip_code ?? '01000000');
+            $std->CEP = $cepLimpo ?: '01000000';
             $std->cPais = '1058';
             $std->xPais = 'BRASIL';
             $std->fone = preg_replace('/[^0-9]/', '', $sale->customer->phone ?? '');
@@ -662,8 +667,6 @@ class NFeService
             $std->cProd = $item->product->sku;
             $std->cEAN = 'SEM GTIN';
             $std->xProd = $item->product->name;
-            $std->vFrete = number_format($itemFreight, 2, '.', '');
-            $std->vDesc = number_format($itemDiscount, 2, '.', '');
             $std->NCM = '71131900'; // Artigos de joalharia de metais preciosos
             $std->CFOP = $cfopBase;
             $std->uCom = 'UN';
@@ -674,6 +677,13 @@ class NFeService
             $std->uTrib = 'UN';
             $std->qTrib = $item->quantity;
             $std->vUnTrib = number_format($item->unit_price, 10, '.', '');
+            // vFrete e vDesc são TDec_1302Opc: omitir quando zero (0.00 é inválido pelo schema)
+            if ($itemFreight > 0) {
+                $std->vFrete = number_format($itemFreight, 2, '.', '');
+            }
+            if ($itemDiscount > 0) {
+                $std->vDesc = number_format($itemDiscount, 2, '.', '');
+            }
             $std->indTot = 1;
             $make->tagprod($std);
 
@@ -722,27 +732,33 @@ class NFeService
 
     protected function buildTotais(Make $make, Sale $sale): void
     {
+        // vNF = vProd + vFrete - vDesc (SEFAZ valida a aritmética — não usar final_amount do DB)
+        $vProd   = (float) ($sale->total_amount   ?? 0);
+        $vFrete  = (float) ($sale->shipping_amount ?? 0);
+        $vDesc   = (float) ($sale->discount_amount ?? 0);
+        $vNF     = round($vProd + $vFrete - $vDesc, 2);
+
         $std = new \stdClass();
-        $std->vBC = 0;
-        $std->vICMS = 0;
+        $std->vBC       = 0;
+        $std->vICMS     = 0;
         $std->vICMSDeson = 0;
-        $std->vFCP = 0;
-        $std->vBCST = 0;
-        $std->vST = 0;
-        $std->vFCPST = 0;
+        $std->vFCP      = 0;
+        $std->vBCST     = 0;
+        $std->vST       = 0;
+        $std->vFCPST    = 0;
         $std->vFCPSTRet = 0;
-        $std->vProd = number_format($sale->total_amount, 2, '.', '');
-        $std->vFrete = number_format($sale->shipping_amount, 2, '.', '');
-        $std->vSeg = 0;
-        $std->vDesc = number_format($sale->discount_amount, 2, '.', '');
-        $std->vII = 0;
-        $std->vIPI = 0;
+        $std->vProd     = number_format($vProd,  2, '.', '');
+        $std->vFrete    = number_format($vFrete, 2, '.', '');
+        $std->vSeg      = 0;
+        $std->vDesc     = number_format($vDesc,  2, '.', '');
+        $std->vII       = 0;
+        $std->vIPI      = 0;
         $std->vIPIDevol = 0;
-        $std->vPIS = 0;
-        $std->vCOFINS = 0;
-        $std->vOutro = 0;
-        $std->vNF = number_format($sale->final_amount, 2, '.', '');
-        $std->vTotTrib = number_format($sale->total_amount * 0.18, 2, '.', ''); // Aprox. 18% de impostos
+        $std->vPIS      = 0;
+        $std->vCOFINS   = 0;
+        $std->vOutro    = 0;
+        $std->vNF       = number_format($vNF, 2, '.', '');
+        $std->vTotTrib  = number_format($vProd * 0.18, 2, '.', '');
         $make->tagICMSTot($std);
     }
 
@@ -762,10 +778,16 @@ class NFeService
         $std->vTroco = null; // Sem troco
         $make->tagpag($std);
         
-        // Detalhe do pagamento
+        // Detalhe do pagamento — vPag deve igualar vNF (vProd + vFrete - vDesc)
+        $vPag = round(
+            (float) ($sale->total_amount   ?? 0) +
+            (float) ($sale->shipping_amount ?? 0) -
+            (float) ($sale->discount_amount ?? 0),
+            2
+        );
         $std = new \stdClass();
         $std->tPag = '01'; // 01=Dinheiro, 03=Cartão de Crédito, 05=Cartão de Débito, etc
-        $std->vPag = number_format($sale->final_amount, 2, '.', '');
+        $std->vPag = number_format($vPag, 2, '.', '');
         
         Log::info('Chamando tagdetPag', ['tPag' => $std->tPag, 'vPag' => $std->vPag]);
         $make->tagdetPag($std);
@@ -786,6 +808,29 @@ class NFeService
         return $codigos[$uf] ?? 0;
     }
     
+    protected function getIBGECodeByCep(string $cep): string
+    {
+        if (strlen($cep) !== 8) {
+            return '';
+        }
+
+        try {
+            $response = Http::timeout(5)->get("https://viacep.com.br/ws/{$cep}/json/");
+
+            if ($response->successful()) {
+                $data = $response->json();
+                if (!empty($data['ibge']) && empty($data['erro'])) {
+                    Log::debug("ViaCEP [{$cep}]: ibge={$data['ibge']}, localidade={$data['localidade']}, uf={$data['uf']}");
+                    return (string) $data['ibge'];
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning("ViaCEP falhou para CEP {$cep}: " . $e->getMessage());
+        }
+
+        return '';
+    }
+
     protected function getCodigoMunicipio(string $cidade, string $uf): string
     {
         // Mapeamento das principais cidades (adicionar mais conforme necessário)
