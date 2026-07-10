@@ -642,6 +642,25 @@ class NFeService
         $freightAccumulated = 0.0;
         $discountAccumulated = 0.0;
 
+        // Validar NCM de todos os itens antes de gerar o XML
+        $itensComNcmInvalido = [];
+        foreach ($sale->saleItems as $item) {
+            $ncm = preg_replace('/\D/', '', $item->product->ncm ?? '');
+            if (strlen($ncm) !== 8) {
+                $itensComNcmInvalido[] = sprintf(
+                    '%s (SKU: %s) — NCM "%s" inválido (requer 8 dígitos)',
+                    $item->product->name,
+                    $item->product->sku,
+                    $item->product->ncm ?? 'vazio'
+                );
+            }
+        }
+        if (!empty($itensComNcmInvalido)) {
+            throw new \Exception(
+                'NCM inválido nos seguintes produtos: ' . implode('; ', $itensComNcmInvalido)
+            );
+        }
+
         foreach ($sale->saleItems as $index => $item) {
             $nItem = $index + 1;
 
@@ -666,7 +685,7 @@ class NFeService
             $std->cProd = $item->product->sku;
             $std->cEAN = 'SEM GTIN';
             $std->xProd = $item->product->name;
-            $std->NCM = '71131900'; // Artigos de joalharia de metais preciosos
+            $std->NCM = preg_replace('/\D/', '', $item->product->ncm); // NCM do produto (8 dígitos)
             $std->CFOP = $cfopBase;
             $std->uCom = 'UN';
             $std->qCom = $item->quantity;
