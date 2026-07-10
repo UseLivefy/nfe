@@ -637,8 +637,10 @@ class NFeService
         $shippingAmount = (float) ($sale->shipping_amount ?? 0);
         // Distribuição proporcional do desconto por item (ICMSTot/vDesc deve = soma de det/prod/vDesc)
         $discountAmount = (float) ($sale->discount_amount ?? 0);
-        $totalProd = $sale->saleItems->sum(fn($i) => $i->quantity * $i->unit_price);
-        $lastIndex = $sale->saleItems->count() - 1;
+        // Excluir itens cancelados da NFe
+        $activeItems = $sale->saleItems->filter(fn($i) => $i->status !== 'cancelled')->values();
+        $totalProd = $activeItems->sum(fn($i) => $i->quantity * $i->unit_price);
+        $lastIndex = $activeItems->count() - 1;
         $freightAccumulated = 0.0;
         $discountAccumulated = 0.0;
 
@@ -652,9 +654,9 @@ class NFeService
             );
         }
 
-        // Validar NCM de todos os itens antes de gerar o XML
+        // Validar NCM de todos os itens ativos antes de gerar o XML
         $itensComNcmInvalido = [];
-        foreach ($sale->saleItems as $item) {
+        foreach ($activeItems as $item) {
             $ncm = preg_replace('/\D/', '', $item->product->ncm ?? '');
             if (strlen($ncm) !== 8) {
                 $itensComNcmInvalido[] = sprintf(
@@ -671,7 +673,7 @@ class NFeService
             );
         }
 
-        foreach ($sale->saleItems as $index => $item) {
+        foreach ($activeItems as $index => $item) {
             $nItem = $index + 1;
 
             // Frete proporcional: último item absorve o restante para evitar diferença de centavos
@@ -760,11 +762,12 @@ class NFeService
 
     protected function buildTotais(Make $make, Sale $sale): void
     {
-        // vNF = vProd + vFrete - vDesc (SEFAZ valida a aritmética — não usar final_amount do DB)
-        $vProd   = (float) ($sale->total_amount   ?? 0);
-        $vFrete  = (float) ($sale->shipping_amount ?? 0);
-        $vDesc   = (float) ($sale->discount_amount ?? 0);
-        $vNF     = round($vProd + $vFrete - $vDesc, 2);
+        // vProd calculado direto dos itens ativos (não usar total_amount do banco que pode estar desatualizado)
+        $activeItems = $sale->saleItems->filter(fn($i) => $i->status !== 'cancelled');
+        $vProd  = round($activeItems->sum(fn($i) => $i->quantity * $i->unit_price), 2);
+        $vFrete = (float) ($sale->shipping_amount ?? 0);
+        $vDesc  = (float) ($sale->discount_amount ?? 0);
+        $vNF    = round($vProd + $vFrete - $vDesc, 2);
 
         $std = new \stdClass();
         $std->vBC       = 0;
