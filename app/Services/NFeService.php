@@ -572,20 +572,20 @@ class NFeService
 
         if (strlen($documento) == 11) {
             $std->CPF = $documento;
-        } else {
-            $std->CNPJ = $documento;
-            // TODO: Se cliente tiver IE informada, adicionar aqui
-            // $std->IE = $sale->customer->inscricao_estadual ?? null;
-        }
-        
-        // indIEDest: 1=Contribuinte, 2=Isento, 9=Não contribuinte
-        // Para CPF sempre 9, para CNPJ verificar se tem IE
-        $documento = $sale->customer->document ?? '';
-        if (strlen($documento) == 11) {
             $std->indIEDest = 9; // CPF = não contribuinte
         } else {
-            // TODO: Se cliente.inscricao_estadual existir, usar 1, senão 9
-            $std->indIEDest = 9; // Por padrão não contribuinte
+            $std->CNPJ = $documento;
+
+            // Buscar IE via consultar.io usando a UF do endereço de entrega
+            $ufDest = $this->getUFDestinatario($sale);
+            $ie = $this->buscarIEPorCNPJ($documento, $ufDest);
+
+            if ($ie !== null) {
+                $std->IE = $ie;
+                $std->indIEDest = 1; // CNPJ com IE = contribuinte
+            } else {
+                $std->indIEDest = 9; // IE não encontrada = não contribuinte
+            }
         }
         
         $std->email = $sale->customer->email ?? '';
@@ -860,6 +860,54 @@ class NFeService
         }
 
         return '';
+    }
+
+    /**
+     * Busca IE do CNPJ via API consultar.io e salva em cache permanente.
+     * Retorna null se não encontrada (sem lançar exceção).
+     */
+    protected function buscarIEPorCNPJ(string $cnpj, string $uf): ?string
+    {
+        $cacheKey = "ie_cnpj_{$cnpj}_uf_{$uf}";
+
+        if (\Cache::has($cacheKey)) {
+            Log::debug("IE do CNPJ {$cnpj} obtida do cache para UF {$uf}");
+            return \Cache::get($cacheKey);
+        }
+
+        $token = '486d2ea1434ae374ccb8e1919578007cb5243970';
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders(['Authorization' => "Token {$token}"])
+                ->get('https://consultar.io/api/v2/ie/consultar', [
+                    'uf'   => $uf,
+                    'cnpj' => $cnpj,
+                ]);
+
+            $data = $response->json();
+
+            $ie = $data[0]['ie'] ?? null;
+            $ieValida = is_string($ie) && preg_match('/^\d+$/', trim($ie));
+
+            if (!$response->successful() || empty($data) || !$ieValida) {
+                Log::info("IE não encontrada para CNPJ {$cnpj} na UF {$uf} — usando indIEDest=9");
+                return null;
+            }
+
+            $ie = trim($ie);
+
+            // Salvar em cache sem TTL (permanente)
+            \Cache::forever($cacheKey, $ie);
+
+            Log::info("IE do CNPJ {$cnpj} encontrada e cacheada: {$ie}");
+
+            return $ie;
+        } catch (\Exception $e) {
+            // Em caso de erro de rede/timeout, logar e retornar null (não bloquear a emissão)
+            Log::warning("Erro ao consultar IE para CNPJ {$cnpj} na UF {$uf}: " . $e->getMessage());
+            return null;
+        }
     }
 
     protected function getCodigoMunicipio(string $cidade, string $uf): string
