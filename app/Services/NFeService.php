@@ -146,14 +146,13 @@ class NFeService
         } catch (\Exception $e) {
             Log::error('Erro ao enviar lote para SEFAZ: ' . $e->getMessage());
             
-            // Salvar registro com erro de comunicação
-            NotaFiscal::create([
+            // Salvar registro com erro de comunicação (updateOrCreate evita duplicate key em chave_acesso)
+            NotaFiscal::updateOrCreate(
+                ['sale_id' => $sale->id, 'numero' => $notaConfig['numero'], 'serie' => $notaConfig['serie']],
+                [
                 'user_id' => $sale->user_id,
-                'sale_id' => $sale->id,
                 'fiscal_data_id' => $fiscalData->id,
                 'tipo' => 'NFe',
-                'numero' => $notaConfig['numero'],
-                'serie' => $notaConfig['serie'],
                 'chave_acesso' => '',
                 'protocolo' => '',
                 'status' => 'erro',
@@ -173,7 +172,7 @@ class NFeService
                 'itens_json' => json_encode($sale->saleItems),
                 'xml_assinado' => $xmlAssinado ?? '',
                 'mensagem_sefaz' => 'Erro de comunicação: ' . $e->getMessage(),
-            ]);
+                ]);
             
             throw new \Exception('Erro de comunicação com SEFAZ: ' . $e->getMessage());
         }
@@ -250,14 +249,13 @@ class NFeService
                     'protocolo' => $notaFiscal->protocolo,
                 ];
             } else {
-                // NFe rejeitada - Salvar no banco com status de erro
-                $notaFiscal = NotaFiscal::create([
+                // NFe rejeitada - Salvar no banco com status de erro (updateOrCreate evita duplicate key)
+                $notaFiscal = NotaFiscal::updateOrCreate(
+                    ['sale_id' => $sale->id, 'numero' => $notaConfig['numero'], 'serie' => $notaConfig['serie']],
+                    [
                     'user_id' => $sale->user_id,
-                    'sale_id' => $sale->id,
                     'fiscal_data_id' => $fiscalData->id,
                     'tipo' => 'NFe',
-                    'numero' => $notaConfig['numero'],
-                    'serie' => $notaConfig['serie'],
                     'chave_acesso' => $protocolo->infProt->chNFe ?? '',
                     'protocolo' => '',
                     'status' => 'erro',
@@ -277,7 +275,8 @@ class NFeService
                     'itens_json' => json_encode($sale->saleItems),
                     'xml_assinado' => $xmlAssinado,
                     'mensagem_sefaz' => $protocolo->infProt->xMotivo,
-                ]);
+                    ]
+                );
                 
                 throw new \Exception("NFe rejeitada: {$protocolo->infProt->cStat} - {$protocolo->infProt->xMotivo}");
             }
@@ -309,14 +308,13 @@ class NFeService
         $protocolo = $stdConsulta->protNFe;
 
         if ($protocolo->infProt->cStat != 100) {
-            // NFe rejeitada no processo assíncrono - Salvar no banco com status de erro
-            $notaFiscal = NotaFiscal::create([
+            // NFe rejeitada no processo assíncrono - Salvar no banco com status de erro (updateOrCreate evita duplicate key)
+            $notaFiscal = NotaFiscal::updateOrCreate(
+                ['sale_id' => $sale->id, 'numero' => $notaConfig['numero'], 'serie' => $notaConfig['serie']],
+                [
                 'user_id' => $sale->user_id,
-                'sale_id' => $sale->id,
                 'fiscal_data_id' => $fiscalData->id,
                 'tipo' => 'NFe',
-                'numero' => $notaConfig['numero'],
-                'serie' => $notaConfig['serie'],
                 'chave_acesso' => $protocolo->infProt->chNFe ?? '',
                 'protocolo' => '',
                 'status' => 'erro',
@@ -336,7 +334,8 @@ class NFeService
                 'itens_json' => json_encode($sale->saleItems),
                 'xml_assinado' => $xmlAssinado,
                 'mensagem_sefaz' => $protocolo->infProt->xMotivo,
-            ]);
+                ]
+            );
             
             throw new \Exception("NFe rejeitada: {$protocolo->infProt->cStat} - {$protocolo->infProt->xMotivo}");
         }
