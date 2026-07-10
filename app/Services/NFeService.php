@@ -642,6 +642,16 @@ class NFeService
         $freightAccumulated = 0.0;
         $discountAccumulated = 0.0;
 
+        // Validar documento do cliente (CPF ou CNPJ é obrigatório na NFe)
+        $documento = preg_replace('/\D/', '', $sale->customer->document ?? '');
+        if (strlen($documento) !== 11 && strlen($documento) !== 14) {
+            throw new \Exception(
+                sprintf(
+                    'Cliente não possui CPF/CNPJ válido cadastrado. Cadastre o documento antes de emitir a NFe.',
+                )
+            );
+        }
+
         // Validar NCM de todos os itens antes de gerar o XML
         $itensComNcmInvalido = [];
         foreach ($sale->saleItems as $item) {
