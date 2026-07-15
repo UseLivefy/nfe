@@ -809,9 +809,11 @@ class NFeService
         $std->vTroco = null; // Sem troco
         $make->tagpag($std);
         
-        // Detalhe do pagamento — vPag deve igualar vNF (vProd + vFrete - vDesc)
+        // Detalhe do pagamento — vPag deve igualar vNF (apenas itens ativos + frete - desconto)
+        $activeItems = $sale->saleItems->filter(fn($i) => $i->status !== 'cancelled');
+        $vProd = round($activeItems->sum(fn($i) => $i->quantity * $i->unit_price), 2);
         $vPag = round(
-            (float) ($sale->total_amount   ?? 0) +
+            $vProd +
             (float) ($sale->shipping_amount ?? 0) -
             (float) ($sale->discount_amount ?? 0),
             2
