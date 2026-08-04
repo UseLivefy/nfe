@@ -153,8 +153,8 @@ class NFeService
                 'user_id' => $sale->user_id,
                 'fiscal_data_id' => $fiscalData->id,
                 'tipo' => 'NFe',
-                'chave_acesso' => '',
-                'protocolo' => '',
+                'chave_acesso' => null,
+                'protocolo' => null,
                 'status' => 'erro',
                 'data_emissao' => now(),
                 'ambiente' => $fiscalData->ambiente_n_fe,
@@ -256,8 +256,8 @@ class NFeService
                     'user_id' => $sale->user_id,
                     'fiscal_data_id' => $fiscalData->id,
                     'tipo' => 'NFe',
-                    'chave_acesso' => $protocolo->infProt->chNFe ?? '',
-                    'protocolo' => '',
+                    'chave_acesso' => $protocolo->infProt->chNFe ?? null,
+                    'protocolo' => null,
                     'status' => 'erro',
                     'data_emissao' => now(),
                     'ambiente' => $fiscalData->ambiente_n_fe,
@@ -315,8 +315,8 @@ class NFeService
                 'user_id' => $sale->user_id,
                 'fiscal_data_id' => $fiscalData->id,
                 'tipo' => 'NFe',
-                'chave_acesso' => $protocolo->infProt->chNFe ?? '',
-                'protocolo' => '',
+                'chave_acesso' => $protocolo->infProt->chNFe ?? null,
+                'protocolo' => null,
                 'status' => 'erro',
                 'data_emissao' => now(),
                 'ambiente' => $fiscalData->ambiente_n_fe,
@@ -547,7 +547,11 @@ class NFeService
         $std->cMun = $fiscalData->codigo_municipio;
         $std->xMun = $fiscalData->cidade;
         $std->UF = $fiscalData->uf;
-        $std->CEP = preg_replace('/[^0-9]/', '', $fiscalData->cep);
+        $cepEmitente = preg_replace('/[^0-9]/', '', $fiscalData->cep);
+        if (strlen($cepEmitente) !== 8) {
+            throw new \Exception('CEP do emitente inválido: "' . $fiscalData->cep . '" — informe exatamente 8 dígitos nos dados fiscais.');
+        }
+        $std->CEP = $cepEmitente;
         $std->cPais = '1058';
         $std->xPais = 'BRASIL';
         $std->fone = preg_replace('/[^0-9]/', '', $fiscalData->telefone ?? '');
@@ -598,6 +602,9 @@ class NFeService
             
         if ($addr) {
             $cepLimpo = preg_replace('/[^0-9]/', '', $addr->zip_code ?? '');
+            if (strlen($cepLimpo) !== 8) {
+                throw new \Exception('CEP do destinatário inválido: "' . ($addr->zip_code ?? '') . '" — informe exatamente 8 dígitos no endereço do cliente.');
+            }
             $ibgeCode = $this->getIBGECodeByCep($cepLimpo);
 
             $std = new \stdClass();
@@ -608,7 +615,7 @@ class NFeService
             $std->cMun = $ibgeCode ?: $this->getCodigoMunicipio($addr->city ?? 'São Paulo', $addr->state ?? 'SP');
             $std->xMun = $addr->city ?? 'São Paulo';
             $std->UF = $addr->state ?? 'SP';
-            $std->CEP = $cepLimpo ?: '01000000';
+            $std->CEP = $cepLimpo;
             $std->cPais = '1058';
             $std->xPais = 'BRASIL';
             $std->fone = preg_replace('/[^0-9]/', '', $sale->customer->phone ?? '');
