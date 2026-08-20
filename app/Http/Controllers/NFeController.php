@@ -113,7 +113,6 @@ class NFeController extends Controller
                 'chave' => 'required|string|size:44',
                 'protocolo' => 'required|string',
                 'motivo' => 'required|string|min:15|max:255',
-                'dados_fiscais' => 'required|array',
             ]);
 
             if ($validator->fails()) {
@@ -127,8 +126,7 @@ class NFeController extends Controller
             $result = $this->nfeService->cancelar(
                 $request->input('chave'),
                 $request->input('protocolo'),
-                $request->input('motivo'),
-                $request->input('dados_fiscais')
+                $request->input('motivo')
             );
 
             return response()->json([

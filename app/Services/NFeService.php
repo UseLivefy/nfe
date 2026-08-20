@@ -39,7 +39,7 @@ class NFeService
         $notaComErro = NotaFiscal::where('sale_id', $saleId)
             ->where('status', 'erro')
             ->first();
-            
+
         if ($notaComErro) {
             Log::info('Nota anterior com erro encontrada, removendo para reemissão', [
                 'numero' => $notaComErro->numero,
@@ -394,6 +394,99 @@ class NFeService
             'status' => 'autorizada',
             'mensagem' => $protocolo->infProt->xMotivo,
             'nota_fiscal_id' => $notaFiscal->id,
+        ];
+    }
+
+    /**
+     * Cancelar NFe autorizada (evento de cancelamento, síncrono).
+     * Regras SEFAZ: NFe precisa estar autorizada, dentro do prazo (normalmente 24h),
+     * com o protocolo de autorização de uso, e o motivo deve ter ao menos 15 caracteres
+     * (já validado no Controller).
+     */
+    public function cancelar(string $chave, string $protocolo, string $motivo): array
+    {
+        Log::info("Iniciando cancelamento de NFe. Chave: {$chave}");
+
+        $notaFiscal = NotaFiscal::where('chave_acesso', $chave)->first();
+        if (!$notaFiscal) {
+            throw new \Exception("Nota fiscal não encontrada para a chave informada: {$chave}");
+        }
+
+        if ($notaFiscal->status === 'cancelada') {
+            throw new \Exception('Esta NFe já está cancelada.');
+        }
+
+        if ($notaFiscal->status !== 'autorizada') {
+            throw new \Exception("Apenas NFe autorizadas podem ser canceladas. Status atual: {$notaFiscal->status}");
+        }
+
+        if ($notaFiscal->protocolo !== $protocolo) {
+            throw new \Exception('Protocolo de autorização informado não corresponde ao protocolo registrado para esta NFe.');
+        }
+
+        $fiscalData = FiscalData::find($notaFiscal->fiscal_data_id);
+        if (!$fiscalData) {
+            throw new \Exception('Dados fiscais do emitente não encontrados.');
+        }
+
+        $tools = $this->createTools($fiscalData);
+
+        try {
+            $response = $tools->sefazCancela($chave, $motivo, $protocolo);
+        } catch (\Exception $e) {
+            Log::error('Erro de comunicação ao cancelar NFe na SEFAZ: ' . $e->getMessage());
+            throw new \Exception('Erro de comunicação com SEFAZ: ' . $e->getMessage());
+        }
+
+        $stdCl = new Standardize();
+        $std = $stdCl->toStd($response);
+
+        Log::info('Status SEFAZ Cancelamento (lote)', [
+            'cStat' => $std->cStat ?? 'N/A',
+            'xMotivo' => $std->xMotivo ?? 'N/A',
+        ]);
+
+        // cStat 128 = Lote de Evento Processado (não confundir com o cStat do evento em si)
+        if ((string) ($std->cStat ?? '') !== '128') {
+            throw new \Exception("Lote de cancelamento não processado pela SEFAZ: {$std->cStat} - {$std->xMotivo}");
+        }
+
+        $infEvento = $std->retEvento->infEvento ?? null;
+        if (!$infEvento) {
+            throw new \Exception('Resposta da SEFAZ não contém o evento de cancelamento processado.');
+        }
+
+        $cStatEvento = (string) $infEvento->cStat;
+        $xMotivoEvento = $infEvento->xMotivo ?? '';
+
+        Log::info('Status SEFAZ Cancelamento (evento)', [
+            'cStat' => $cStatEvento,
+            'xMotivo' => $xMotivoEvento,
+        ]);
+
+        // 101/135 = homologado dentro do prazo, 155 = homologado fora do prazo
+        if (!in_array($cStatEvento, ['101', '135', '155'], true)) {
+            throw new \Exception("Cancelamento rejeitado pela SEFAZ: {$cStatEvento} - {$xMotivoEvento}");
+        }
+
+        $notaFiscal->status = 'cancelada';
+        $notaFiscal->status_descricao = $xMotivoEvento;
+        $notaFiscal->motivo_cancelamento = $motivo;
+        $notaFiscal->data_cancelamento = now()->toDateTimeString();
+        $notaFiscal->save();
+
+        Log::info('NFe cancelada com sucesso', [
+            'chave' => $chave,
+            'nProt_evento' => $infEvento->nProt ?? null,
+        ]);
+
+        return [
+            'chave' => $chave,
+            'protocolo_cancelamento' => $infEvento->nProt ?? null,
+            'status' => 'cancelada',
+            'cStat' => $cStatEvento,
+            'mensagem' => $xMotivoEvento,
+            'data_cancelamento' => $notaFiscal->data_cancelamento,
         ];
     }
 
