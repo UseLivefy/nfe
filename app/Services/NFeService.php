@@ -500,7 +500,7 @@ class NFeService
             'tpAmb' => (int) ($fiscalData->ambiente_n_fe ?? 2),
             'razaosocial' => $fiscalData->razao_social,
             'siglaUF' => $fiscalData->uf,
-            'cnpj' => $fiscalData->cnpj,
+            'cnpj' => preg_replace('/[^0-9]/', '', $fiscalData->cnpj),
             'schemes' => config('nfe.schemes', 'PL_009_V4'),
             'versao' => config('nfe.versao', '4.00'),
             'tokenIBPT' => '',
@@ -590,8 +590,11 @@ class NFeService
         $std->mod = 55;
         $std->serie = $notaConfig['serie'];
         $std->nNF = $notaConfig['numero'];
-        $std->dhEmi = date('Y-m-d\TH:i:sP');
-        $std->dhSaiEnt = date('Y-m-d\TH:i:sP');
+        // Margem de segurança contra pequenas divergências de relógio em relação à SEFAZ,
+        // que rejeita (cStat 703) quando dhEmi é posterior ao horário de recebimento.
+        $dhEmi = now()->subMinute()->format('Y-m-d\TH:i:sP');
+        $std->dhEmi = $dhEmi;
+        $std->dhSaiEnt = $dhEmi;
         $std->tpNF = 1;
         
         // Calcular idDest baseado na UF
