@@ -590,9 +590,12 @@ class NFeService
         $std->mod = 55;
         $std->serie = $notaConfig['serie'];
         $std->nNF = $notaConfig['numero'];
-        // Margem de segurança contra pequenas divergências de relógio em relação à SEFAZ,
-        // que rejeita (cStat 703) quando dhEmi é posterior ao horário de recebimento.
-        $dhEmi = now()->subMinute()->format('Y-m-d\TH:i:sP');
+        // app.timezone é UTC, então now() gera offset "+00:00" em vez do "-03:00" exigido
+        // pela SEFAZ. O horário UTC (ex.: 10:56) fica maior que o horário local de recebimento
+        // (ex.: 07:57), e a SEFAZ rejeita (cStat 703) por dhEmi "posterior" ao recebimento.
+        // Por isso geramos dhEmi já no fuso de Brasília. Mantém a margem de 1 minuto como
+        // proteção extra contra pequenas divergências de relógio com a SEFAZ.
+        $dhEmi = now('America/Sao_Paulo')->subMinute()->format('Y-m-d\TH:i:sP');
         $std->dhEmi = $dhEmi;
         $std->dhSaiEnt = $dhEmi;
         $std->tpNF = 1;
