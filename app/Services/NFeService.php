@@ -749,6 +749,10 @@ class NFeService
         $lastIndex = $activeItems->count() - 1;
         $freightAccumulated = 0.0;
         $discountAccumulated = 0.0;
+        // vTotTrib total deve ser IDÊNTICO ao calculado em buildTotais (mesma fórmula, mesmos dados),
+        // senão a SEFAZ rejeita com cStat 685 (soma dos itens difere do total aproximado de tributos)
+        $totalVTotTrib = round(round($totalProd, 2) * 0.18, 2);
+        $vTotTribAccumulated = 0.0;
 
         // Validar documento do cliente (CPF ou CNPJ é obrigatório na NFe)
         $documento = preg_replace('/\D/', '', $sale->customer->document ?? '');
@@ -823,11 +827,19 @@ class NFeService
             $std->indTot = 1;
             $make->tagprod($std);
 
-            // Impostos
-            $vTotTrib = $item->quantity * $item->unit_price * 0.18; // Aprox. 18% de impostos
+            // Impostos (aprox. 18%) — último item absorve o restante para que a soma
+            // bata exatamente com o vTotTrib do total (ICMSTot), senão SEFAZ rejeita (cStat 685)
+            if ($index === $lastIndex) {
+                $itemVTotTrib = round($totalVTotTrib - $vTotTribAccumulated, 2);
+            } else {
+                $itemVTotTrib = $totalProd > 0
+                    ? round($totalVTotTrib * ($item->quantity * $item->unit_price) / $totalProd, 2)
+                    : 0.0;
+                $vTotTribAccumulated += $itemVTotTrib;
+            }
             $std = new \stdClass();
             $std->item = $nItem;
-            $std->vTotTrib = number_format($vTotTrib, 2, '.', '');
+            $std->vTotTrib = number_format($itemVTotTrib, 2, '.', '');
             $make->tagimposto($std);
 
             // ICMS - Simples Nacional
